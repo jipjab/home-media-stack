@@ -1,0 +1,51 @@
+# Development overrides for docker-compose.yml
+# Automatically loaded by docker-compose (takes precedence over docker-compose.yml)
+# Use this for local testing with different port mappings or logging
+
+version: '3.9'
+
+services:
+  plex:
+    # Uncomment to enable verbose logging for debugging
+    # environment:
+    #   DEBUG: "true"
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: 5
+
+  jellyfin:
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: 5
+
+  radarr:
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: 5
+
+  sonarr:
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: 5
+
+  lidarr:
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: 5
+
+  arcane:
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: 5

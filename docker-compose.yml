@@ -1,0 +1,301 @@
+version: '3.9'
+
+# Réseau custom pour communication inter-services
+networks:
+  media-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes nommés pour données persistantes
+volumes:
+  plex-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/plex
+
+  jellyfin-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/jellyfin
+
+  radarr-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/radarr
+
+  sonarr-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/sonarr
+
+  lidarr-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/lidarr
+
+  arcane-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/arcane
+
+  qbittorrent-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MEDIA_STORAGE_PATH}/docker-data/qbittorrent
+
+  downloads:
+    driver: local
+
+services:
+  # ============================================
+  # PLEX — Media Server
+  # ============================================
+  plex:
+    image: plexinc/pms-docker:latest
+    container_name: plex
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.10
+    ports:
+      - "32400:32400/tcp"
+      - "1900:1900/udp"
+      - "3005:3005/tcp"
+      - "5353:5353/udp"
+      - "8324:8324/tcp"
+      - "32410:32410/udp"
+      - "32412:32412/udp"
+      - "32413:32413/udp"
+      - "32414:32414/udp"
+    environment:
+      PLEX_UID: ${PLEX_UID}
+      PLEX_GID: ${PLEX_GID}
+      PLEX_CLAIM: ${PLEX_TOKEN}
+      ADVERTISE_IP: http://${PLEX_ADVERTISE_IP}/,http://127.0.0.1:32400/
+      TZ: ${TZ}
+    volumes:
+      - plex-config:/config
+      - ${MEDIA_STORAGE_PATH}/films:/mnt/media/films
+      - ${MEDIA_STORAGE_PATH}/series:/mnt/media/series
+      - ${MEDIA_STORAGE_PATH}/music:/mnt/media/music
+      - /dev/shm:/transcode
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:32400/identity || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # JELLYFIN — Media Server (Parallel Plex)
+  # ============================================
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.11
+    ports:
+      - "8096:8096/tcp"
+      - "8920:8920/tcp"
+    environment:
+      JELLYFIN_PublishedServerUrl: http://${PLEX_ADVERTISE_IP%:*}:8096
+      TZ: ${TZ}
+    volumes:
+      - jellyfin-config:/config
+      - ${MEDIA_STORAGE_PATH}/films:/mnt/media/films
+      - ${MEDIA_STORAGE_PATH}/series:/mnt/media/series
+      - ${MEDIA_STORAGE_PATH}/music:/mnt/media/music
+      - /dev/shm:/transcode
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:8096/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # RADARR — Films Auto-Download
+  # ============================================
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.20
+    ports:
+      - "7878:7878/tcp"
+    environment:
+      PUID: ${RADARR_UID}
+      PGID: ${RADARR_GID}
+      TZ: ${TZ}
+    volumes:
+      - radarr-config:/config
+      - ${MEDIA_STORAGE_PATH}/films:/mnt/media/films
+      - downloads:/mnt/media/downloads
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:7878/api/v3/system/status || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # SONARR — Séries Auto-Download
+  # ============================================
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.21
+    ports:
+      - "8989:8989/tcp"
+    environment:
+      PUID: ${SONARR_UID}
+      PGID: ${SONARR_GID}
+      TZ: ${TZ}
+    volumes:
+      - sonarr-config:/config
+      - ${MEDIA_STORAGE_PATH}/series:/mnt/media/series
+      - downloads:/mnt/media/downloads
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:8989/api/v3/system/status || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # LIDARR — Musique Auto-Download
+  # ============================================
+  lidarr:
+    image: linuxserver/lidarr:latest
+    container_name: lidarr
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.22
+    ports:
+      - "8686:8686/tcp"
+    environment:
+      PUID: ${LIDARR_UID}
+      PGID: ${LIDARR_GID}
+      TZ: ${TZ}
+    volumes:
+      - lidarr-config:/config
+      - ${MEDIA_STORAGE_PATH}/music:/mnt/media/music
+      - downloads:/mnt/media/downloads
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:8686/api/v1/system/status || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # QBITTORRENT — Torrent Download Client
+  # ============================================
+  qbittorrent:
+    image: linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.25
+    ports:
+      - "8081:8080/tcp"
+      - "6881:6881/tcp"
+      - "6881:6881/udp"
+    environment:
+      PUID: ${RADARR_UID}
+      PGID: ${RADARR_GID}
+      TZ: ${TZ}
+      WEBUI_PORT: 8080
+    volumes:
+      - qbittorrent-config:/config
+      - downloads:/mnt/media/downloads
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:8080 || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================
+  # ARCANE — Docker Management UI
+  # ============================================
+  arcane:
+    image: getarcaneapp/arcane:latest
+    container_name: arcane
+    networks:
+      media-net:
+        ipv4_address: 172.20.0.30
+    ports:
+      - "8080:8080/tcp"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - arcane-config:/data
+    restart: unless-stopped
+    logging:
+      driver: ${COMPOSE_LOG_DRIVER}
+      options:
+        max-size: ${COMPOSE_LOG_MAX_SIZE}
+        max-file: ${COMPOSE_LOG_MAX_FILE}
+    healthcheck:
+      test: curl -f http://localhost:8080/ || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
